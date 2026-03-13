@@ -4,30 +4,33 @@
 #define DS3231_I2C_ADDRESS 0x68
 
 // Pin definitions
-#define PIN_MOTOR_A   3   // motor coil A
-#define PIN_MOTOR_B   12  // motor coil B
-#define PIN_INDICATOR 13  // LED indicator
-#define PIN_AUTO_SW   5   // auto/manual switch (LOW = auto, connect to GND)
-#define PIN_BTN_ADV   6   // manual advance button (LOW = pressed, connect to GND)
-#define PIN_BTN_STEP  7   // single step button   (LOW = pressed, connect to GND)
+#define PIN_MOTOR_A 3    // motor coil A
+#define PIN_MOTOR_B 12   // motor coil B
+#define PIN_INDICATOR 13 // LED indicator
+#define PIN_AUTO_SW 5    // auto/manual switch (LOW = auto, connect to GND)
+#define PIN_BTN_ADV 6    // manual advance button (LOW = pressed, connect to GND)
+#define PIN_BTN_STEP 7   // single step button   (LOW = pressed, connect to GND)
 
-int pulse_fired = 0;   // 1 = motor already pulsed this minute
-int polarity    = 0;   // last pulse polarity: 0 = coil A, 1 = coil B
-int last_sec    = 0;   // last observed RTC second
+bool pulse_fired = false; // 1 = motor already pulsed this minute
+bool polarity = false;    // last pulse polarity: 0 = coil A, 1 = coil B
+int last_sec = 0;         // last observed RTC second
 
-byte decToBcd(byte val) {
+byte decToBcd(byte val)
+{
   return (val / 10 * 16) + (val % 10);
 }
 
-byte bcdToDec(byte val) {
+byte bcdToDec(byte val)
+{
   return (val / 16 * 10) + (val % 16);
 }
 
 // Write full time to DS3231 (year is 2-digit, e.g. 26 for 2026)
 void setDS3231time(byte second, byte minute, byte hour,
-                   byte dayOfWeek, byte dayOfMonth, byte month, byte year) {
+                   byte dayOfWeek, byte dayOfMonth, byte month, byte year)
+{
   Wire.beginTransmission(DS3231_I2C_ADDRESS);
-  Wire.write(0);  // start at register 0 (seconds)
+  Wire.write(0); // start at register 0 (seconds)
   Wire.write(decToBcd(second));
   Wire.write(decToBcd(minute));
   Wire.write(decToBcd(hour));
@@ -39,24 +42,26 @@ void setDS3231time(byte second, byte minute, byte hour,
 }
 
 // Read only seconds from DS3231, drain remaining bytes to keep bus clean
-void readDS3231time(byte *second) {
+void readDS3231time(byte *second)
+{
   Wire.beginTransmission(DS3231_I2C_ADDRESS);
   Wire.write(0);
   Wire.endTransmission();
   Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
   *second = bcdToDec(Wire.read() & 0x7f);
-  for (int i = 0; i < 6; i++) Wire.read();  // drain remaining 6 bytes
+  for (int i = 0; i < 6; i++)
+    Wire.read(); // drain remaining 6 bytes
 }
 
-void setup() {
+void setup()
+{
   Wire.begin();
-  pinMode(PIN_MOTOR_A,   OUTPUT);
-  pinMode(PIN_MOTOR_B,   OUTPUT);
+  pinMode(PIN_MOTOR_A, OUTPUT);
+  pinMode(PIN_MOTOR_B, OUTPUT);
   pinMode(PIN_INDICATOR, OUTPUT);
-  pinMode(PIN_AUTO_SW,   INPUT);
-  pinMode(PIN_BTN_ADV,   INPUT);
-  pinMode(PIN_BTN_STEP,  INPUT);
-
+  pinMode(PIN_AUTO_SW, INPUT);
+  pinMode(PIN_BTN_ADV, INPUT);
+  pinMode(PIN_BTN_STEP, INPUT);
 
   setDS3231time(0, 0, 0, 1, 1, 1, 26);
 
@@ -64,83 +69,104 @@ void setup() {
   // setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
 }
 
-void parity_low() {
-    digitalWrite(PIN_MOTOR_A, HIGH);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_A, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
+void parity_low()
+{
+  digitalWrite(PIN_MOTOR_A, HIGH);
+  digitalWrite(PIN_MOTOR_B, LOW);
+  digitalWrite(PIN_INDICATOR, HIGH);
+  delay(700);
+  digitalWrite(PIN_MOTOR_A, LOW);
+  digitalWrite(PIN_INDICATOR, LOW);
 }
 
-void parity_high() {
-    digitalWrite(PIN_MOTOR_A, LOW);
-    digitalWrite(PIN_MOTOR_B, HIGH);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
-  }
+void parity_high()
+{
+  digitalWrite(PIN_MOTOR_A, LOW);
+  digitalWrite(PIN_MOTOR_B, HIGH);
+  digitalWrite(PIN_INDICATOR, HIGH);
+  delay(700);
+  digitalWrite(PIN_MOTOR_B, LOW);
+  digitalWrite(PIN_INDICATOR, LOW);
+}
 
 // Pulse motor one step, alternating polarity (used for manual advance)
-void aut_posun() {
-  if (polarity == 0) {
-    parity_low();
-    polarity = 1;
-  } else {
+void aut_posun()
+{
+  if (polarity)
+  {
     parity_high();
-    polarity = 0;
   }
+  else
+  {
+    parity_low();
+  }
+  polarity = !polarity;
+
   delay(300);
 }
 
 // Automatic minute tick: fires motor pulse at second == 0, alternating polarity
-void minuta() {
+void minuta()
+{
   byte second;
   readDS3231time(&second);
 
-  if (last_sec != second) {
+  if (last_sec != second)
+  {
     digitalWrite(PIN_INDICATOR, HIGH);
     delay(20);
     digitalWrite(PIN_INDICATOR, LOW);
     last_sec = second;
   }
 
-  if (second == 58) {
+  if (second == 58)
+  {
     pulse_fired = 0;
   }
 
-  if (second == 0 && pulse_fired == 0 && polarity == 0) {
+  if (second == 0 && !pulse_fired && !polarity)
+  {
     parity_low();
-    pulse_fired = 1;
-    polarity = 1;
-  } 
-  
-  if (second == 0 && pulse_fired == 0 && polarity == 1) {
+    pulse_fired = true;
+    polarity = true;
+  }
+
+  if (second == 0 && !pulse_fired && polarity)
+  {
     parity_high();
-    pulse_fired = 1;
-    polarity = 0;
+    pulse_fired = true;
+    polarity = false;
   }
 }
 
 // Single step pulse, alternating polarity
-void tlacitko() {
-  if (polarity == 0) {
-    parity_low();
-    polarity = 1;
-  } else {
+void tlacitko()
+{
+  if (polarity)
+  {
     parity_high();
-    polarity = 0;
   }
-  delay(50);  // debounce
+  else
+  {
+    parity_low();
+  }
+
+  polarity = !polarity;
+  delay(50); // debounce
 }
 
-void loop() {
-  if (digitalRead(PIN_AUTO_SW) == LOW) {
+void loop()
+{
+  if (digitalRead(PIN_AUTO_SW) == LOW)
+  {
     minuta();
-  } else if (digitalRead(PIN_BTN_ADV) == HIGH) {
+  }
+  else if (digitalRead(PIN_BTN_ADV) == HIGH)
+  {
     aut_posun();
-  } else if (digitalRead(PIN_BTN_STEP) == HIGH) {
+  }
+  else if (digitalRead(PIN_BTN_STEP) == HIGH)
+  {
     tlacitko();
     setDS3231time(0, 0, 0, 1, 1, 1, 26);
   }
