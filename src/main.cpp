@@ -16,11 +16,11 @@ int polarity    = 0;   // last pulse polarity: 0 = coil A, 1 = coil B
 int last_sec    = 0;   // last observed RTC second
 
 byte decToBcd(byte val) {
-  return ((val / 10 * 16) + (val % 10));
+  return (val / 10 * 16) + (val % 10);
 }
 
 byte bcdToDec(byte val) {
-  return ((val / 16 * 10) + (val % 16));
+  return (val / 16 * 10) + (val % 16);
 }
 
 // Write full time to DS3231 (year is 2-digit, e.g. 26 for 2026)
@@ -53,32 +53,45 @@ void setup() {
   pinMode(PIN_MOTOR_A,   OUTPUT);
   pinMode(PIN_MOTOR_B,   OUTPUT);
   pinMode(PIN_INDICATOR, OUTPUT);
-  pinMode(PIN_AUTO_SW,   INPUT_PULLUP);
-  pinMode(PIN_BTN_ADV,   INPUT_PULLUP);
-  pinMode(PIN_BTN_STEP,  INPUT_PULLUP);
+  pinMode(PIN_AUTO_SW,   INPUT);
+  pinMode(PIN_BTN_ADV,   INPUT);
+  pinMode(PIN_BTN_STEP,  INPUT);
+
+
+  setDS3231time(0, 0, 0, 1, 1, 1, 26);
 
   // To set RTC time: uncomment the line below, upload once, then comment it out again.
-  setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
+  // setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
 }
 
-// Pulse motor one step, alternating polarity (used for manual advance)
-void aut_posun() {
-  if (polarity == 0) {
+void parity_low() {
     digitalWrite(PIN_MOTOR_A, HIGH);
     digitalWrite(PIN_MOTOR_B, LOW);
     digitalWrite(PIN_INDICATOR, HIGH);
     delay(700);
     digitalWrite(PIN_MOTOR_A, LOW);
     digitalWrite(PIN_INDICATOR, LOW);
-    polarity = 1;
-  } else {
+}
+
+void parity_high() {
+    digitalWrite(PIN_MOTOR_A, LOW);
     digitalWrite(PIN_MOTOR_B, HIGH);
     digitalWrite(PIN_INDICATOR, HIGH);
     delay(700);
     digitalWrite(PIN_MOTOR_B, LOW);
     digitalWrite(PIN_INDICATOR, LOW);
+  }
+
+// Pulse motor one step, alternating polarity (used for manual advance)
+void aut_posun() {
+  if (polarity == 0) {
+    parity_low();
+    polarity = 1;
+  } else {
+    parity_high();
     polarity = 0;
   }
+  delay(300);
 }
 
 // Automatic minute tick: fires motor pulse at second == 0, alternating polarity
@@ -98,21 +111,13 @@ void minuta() {
   }
 
   if (second == 0 && pulse_fired == 0 && polarity == 0) {
-    digitalWrite(PIN_MOTOR_A, HIGH);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_A, LOW);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
+    parity_low();
     pulse_fired = 1;
     polarity = 1;
-  } else if (second == 0 && pulse_fired == 0 && polarity == 1) {
-    digitalWrite(PIN_MOTOR_B, HIGH);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
+  } 
+  
+  if (second == 0 && pulse_fired == 0 && polarity == 1) {
+    parity_high();
     pulse_fired = 1;
     polarity = 0;
   }
@@ -121,20 +126,10 @@ void minuta() {
 // Single step pulse, alternating polarity
 void tlacitko() {
   if (polarity == 0) {
-    digitalWrite(PIN_MOTOR_A, HIGH);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_A, LOW);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
+    parity_low();
     polarity = 1;
   } else {
-    digitalWrite(PIN_MOTOR_B, HIGH);
-    digitalWrite(PIN_INDICATOR, HIGH);
-    delay(700);
-    digitalWrite(PIN_MOTOR_B, LOW);
-    digitalWrite(PIN_INDICATOR, LOW);
+    parity_high();
     polarity = 0;
   }
   delay(50);  // debounce
@@ -143,12 +138,11 @@ void tlacitko() {
 void loop() {
   if (digitalRead(PIN_AUTO_SW) == LOW) {
     minuta();
-  } else if (digitalRead(PIN_BTN_ADV) == LOW) {
+  } else if (digitalRead(PIN_BTN_ADV) == HIGH) {
     aut_posun();
-    delay(50);  // debounce
-  } else if (digitalRead(PIN_BTN_STEP) == LOW) {
+  } else if (digitalRead(PIN_BTN_STEP) == HIGH) {
     tlacitko();
-    setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
+    setDS3231time(0, 0, 0, 1, 1, 1, 26);
   }
 
   delay(50);
