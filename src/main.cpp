@@ -14,16 +14,22 @@
 // Timing constants (milliseconds)
 const unsigned long PULSE_MS  = 700; // motor coil energise time
 const unsigned long PAUSE_MS  = 300; // inter-pulse pause for manual advance
+const unsigned long BLINK_MS  =  20; // per-second LED blink duration
 
 // Pulse state machine
-enum PulseState { IDLE, PULSE_ACTIVE, PAUSE_AFTER };
-PulseState pulse_state    = IDLE;
+enum PulseState
+{
+  IDLE,
+  PULSE_ACTIVE,
+  PAUSE_AFTER
+};
+PulseState pulse_state = IDLE;
 unsigned long pulse_start = 0;
-bool          pause_after = false; // true when a post-pulse pause is needed
+bool pause_after = false; // true when a post-pulse pause is needed
 
 bool pulse_fired = false; // motor already pulsed this minute
-bool polarity    = false; // false = coil A next, true = coil B next
-int  last_sec    = -1;    // last observed RTC second
+bool polarity = false;    // false = coil A next, true = coil B next
+byte last_sec = 255;      // last observed RTC second
 
 // ── DS3231 helpers ─────────────────────────────────────────────────────────
 
@@ -52,7 +58,8 @@ void readDS3231time(byte *second)
   Wire.endTransmission();
   Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
   *second = bcdToDec(Wire.read() & 0x7f);
-  for (int i = 0; i < 6; i++) Wire.read(); // drain remaining bytes
+  for (int i = 0; i < 6; i++)
+    Wire.read(); // drain remaining bytes
 }
 
 // ── Non-blocking motor pulse ────────────────────────────────────────────────
@@ -60,10 +67,13 @@ void readDS3231time(byte *second)
 // Start a single motor pulse. Pass with_pause=true for manual advance.
 void start_pulse(bool high, bool with_pause)
 {
-  if (high) {
+  if (high)
+  {
     digitalWrite(PIN_MOTOR_A, LOW);
     digitalWrite(PIN_MOTOR_B, HIGH);
-  } else {
+  }
+  else
+  {
     digitalWrite(PIN_MOTOR_A, HIGH);
     digitalWrite(PIN_MOTOR_B, LOW);
   }
@@ -76,25 +86,34 @@ void start_pulse(bool high, bool with_pause)
 // Advance the pulse state machine — call every loop iteration.
 void update_pulse()
 {
-  if (pulse_state == IDLE) return;
+  if (pulse_state == IDLE)
+    return;
 
-  unsigned long now     = millis();
+  unsigned long now = millis();
   unsigned long elapsed = now - pulse_start;
 
-  if (pulse_state == PULSE_ACTIVE) {
-    if (elapsed >= PULSE_MS) {
+  if (pulse_state == PULSE_ACTIVE)
+  {
+    if (elapsed >= PULSE_MS)
+    {
       digitalWrite(PIN_MOTOR_A, LOW);
       digitalWrite(PIN_MOTOR_B, LOW);
       digitalWrite(PIN_INDICATOR, LOW);
-      if (pause_after) {
+      if (pause_after)
+      {
         pulse_state = PAUSE_AFTER;
         pulse_start = now;
-      } else {
+      }
+      else
+      {
         pulse_state = IDLE;
       }
     }
-  } else if (pulse_state == PAUSE_AFTER) {
-    if (elapsed >= PAUSE_MS) {
+  }
+  else if (pulse_state == PAUSE_AFTER)
+  {
+    if (elapsed >= PAUSE_MS)
+    {
       pulse_state = IDLE;
     }
   }
@@ -102,17 +121,38 @@ void update_pulse()
 
 bool pulse_busy() { return pulse_state != IDLE; }
 
+// ── Non-blocking per-second blink ───────────────────────────────────────────
+
+bool          blink_active = false;
+unsigned long blink_start  = 0;
+
+void start_blink()
+{
+  if (pulse_busy()) return; // motor pulse owns the indicator — skip
+  digitalWrite(PIN_INDICATOR, HIGH);
+  blink_start  = millis();
+  blink_active = true;
+}
+
+void update_blink()
+{
+  if (blink_active && millis() - blink_start >= BLINK_MS) {
+    digitalWrite(PIN_INDICATOR, LOW);
+    blink_active = false;
+  }
+}
+
 // ── Arduino entry points ────────────────────────────────────────────────────
 
 void setup()
 {
   Wire.begin();
-  pinMode(PIN_MOTOR_A,    OUTPUT);
-  pinMode(PIN_MOTOR_B,    OUTPUT);
-  pinMode(PIN_INDICATOR,  OUTPUT);
-  pinMode(PIN_AUTO_SW,    INPUT);
-  pinMode(PIN_BTN_ADV,    INPUT);
-  pinMode(PIN_BTN_STEP,   INPUT);
+  pinMode(PIN_MOTOR_A, OUTPUT);
+  pinMode(PIN_MOTOR_B, OUTPUT);
+  pinMode(PIN_INDICATOR, OUTPUT);
+  pinMode(PIN_AUTO_SW, INPUT);
+  pinMode(PIN_BTN_ADV, INPUT);
+  pinMode(PIN_BTN_STEP, INPUT);
 
   // To set RTC time: uncomment, upload once, then comment out again.
   // setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
@@ -121,6 +161,7 @@ void setup()
 void loop()
 {
   update_pulse(); // always advance pulse state machine first
+  update_blink(); // advance per-second blink state machine
 
   if (digitalRead(PIN_AUTO_SW) == LOW)
   {
@@ -128,13 +169,19 @@ void loop()
     byte second;
     readDS3231time(&second);
 
-    if ((int)second != last_sec) last_sec = (int)second;
+    if (second != last_sec)
+    {
+      start_blink();
+      last_sec = second;
+    }
 
-    if (second == 58) pulse_fired = false;
+    if (second == 58)
+      pulse_fired = false;
 
-    if (second == 0 && !pulse_fired && !pulse_busy()) {
+    if (second == 0 && !pulse_fired && !pulse_busy())
+    {
       start_pulse(polarity, false);
-      polarity    = !polarity;
+      polarity = !polarity;
       pulse_fired = true;
     }
   }
