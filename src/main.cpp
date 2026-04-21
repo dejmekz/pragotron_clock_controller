@@ -4,12 +4,19 @@
 #define DS3231_I2C_ADDRESS 0x68
 
 // Pin definitions
-#define PIN_MOTOR_A 3    // motor coil A
-#define PIN_MOTOR_B 12   // motor coil B
-#define PIN_INDICATOR 13 // LED indicator
-#define PIN_AUTO_SW 5    // auto/manual switch (LOW = auto, connect to GND)
-#define PIN_BTN_ADV 6    // manual advance button (LOW = pressed, connect to GND)
-#define PIN_BTN_STEP 7   // single step button   (LOW = pressed, connect to GND)
+const uint8_t PIN_MOTOR_A  =  3; // motor coil A
+const uint8_t PIN_MOTOR_B  = 12; // motor coil B
+const uint8_t PIN_INDICATOR = 13; // LED indicator
+const uint8_t PIN_AUTO_SW  =  5; // auto/manual switch (LOW = auto, connect to GND)
+const uint8_t PIN_BTN_ADV  =  6; // manual advance button (HIGH = pressed)
+const uint8_t PIN_BTN_STEP =  7; // single step button   (HIGH = pressed)
+
+// DS3231 aging offset — written to register 0x10 on startup.
+// 1 LSB ≈ 0.1 ppm at 25 °C ≈ 8.6 ms/day ≈ 3.15 s/year.
+// +8 ≈ −0.83 ppm → corrects a clock that GAINS ~1 s per 2 weeks.
+// −8 ≈ +0.83 ppm → corrects a clock that LOSES ~1 s per 2 weeks.
+// Set to 0 to leave the oscillator untouched.
+const int8_t DS3231_AGING_OFFSET = 8; // adjust sign to match your module's drift direction
 
 // Timing constants (milliseconds)
 const unsigned long PULSE_MS  = 700; // motor coil energise time
@@ -36,6 +43,14 @@ byte last_sec = 255;      // last observed RTC second
 byte decToBcd(byte val) { return (val / 10 * 16) + (val % 10); }
 byte bcdToDec(byte val) { return (val / 16 * 10) + (val % 16); }
 
+void setDS3231aging(int8_t offset)
+{
+  Wire.beginTransmission(DS3231_I2C_ADDRESS);
+  Wire.write(0x10);
+  Wire.write((byte)offset);
+  Wire.endTransmission();
+}
+
 void setDS3231time(byte second, byte minute, byte hour,
                    byte dayOfWeek, byte dayOfMonth, byte month, byte year)
 {
@@ -56,10 +71,8 @@ void readDS3231time(byte *second)
   Wire.beginTransmission(DS3231_I2C_ADDRESS);
   Wire.write(0);
   Wire.endTransmission();
-  Wire.requestFrom(DS3231_I2C_ADDRESS, 7);
+  Wire.requestFrom(DS3231_I2C_ADDRESS, 1);
   *second = bcdToDec(Wire.read() & 0x7f);
-  for (int i = 0; i < 6; i++)
-    Wire.read(); // drain remaining bytes
 }
 
 // ── Non-blocking motor pulse ────────────────────────────────────────────────
@@ -154,6 +167,9 @@ void setup()
   pinMode(PIN_BTN_ADV, INPUT);
   pinMode(PIN_BTN_STEP, INPUT);
 
+  if (DS3231_AGING_OFFSET != 0)
+    setDS3231aging(DS3231_AGING_OFFSET);
+
   // To set RTC time: uncomment, upload once, then comment out again.
   // setDS3231time(0, 0, 12, 4, 5, 3, 26);  // 12:00:00, Wed, Mar 5, 2026
 }
@@ -175,7 +191,7 @@ void loop()
       last_sec = second;
     }
 
-    if (second == 58)
+    if (second == 1)
       pulse_fired = false;
 
     if (second == 0 && !pulse_fired && !pulse_busy())
