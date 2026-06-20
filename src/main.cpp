@@ -13,10 +13,10 @@ const uint8_t PIN_BTN_STEP =  7; // single step button   (HIGH = pressed)
 
 // DS3231 aging offset — written to register 0x10 on startup.
 // 1 LSB ≈ 0.1 ppm at 25 °C ≈ 8.6 ms/day ≈ 3.15 s/year.
-// +8 ≈ −0.83 ppm → corrects a clock that GAINS ~1 s per 2 weeks.
-// −8 ≈ +0.83 ppm → corrects a clock that LOSES ~1 s per 2 weeks.
+// +5 ≈ −0.5 ppm → corrects a clock that GAINS ~1 s per 3.3 weeks.
+// −5 ≈ +0.5 ppm → corrects a clock that LOSES ~1 s per 3.3 weeks.
 // Set to 0 to leave the oscillator untouched.
-const int8_t DS3231_AGING_OFFSET = 8; // adjust sign to match your module's drift direction
+const int8_t DS3231_AGING_OFFSET = 5; // adjust sign to match your module's drift direction
 
 // Timing constants (milliseconds)
 const unsigned long PULSE_MS  = 700; // motor coil energise time
